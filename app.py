@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.retrievers import BM25Retriever
-from langchain.retrievers import EnsembleRetriever
+from langchain_core.runnables import RunnableParallel, RunnableLambda
 
 load_dotenv()
 
@@ -36,11 +36,25 @@ def load_retriever():
     bm25_retriever = BM25Retriever.from_documents(docs)
     bm25_retriever.k = 4
 
-    ensemble_retriever = EnsembleRetriever(
-        retrievers=[bm25_retriever, vector_retriever],
-        weights=[0.5, 0.5],
-    )
-    return ensemble_retriever
+   hybrid = RunnableParallel(
+    bm25=bm25_retriever,
+    vector=vector_retriever
+)
+
+def rrf_merge(results, k=60):
+    rrf_scores = {}
+    rrf_docs = {}
+    for retriever_name, doc_list in results.items():
+        for rank, doc in enumerate(doc_list):
+            key = doc.page_content
+            if key not in rrf_scores:
+                rrf_scores[key] = 0.0
+                rrf_docs[key] = doc
+            rrf_scores[key] += 1 / (k + rank + 1)
+    sorted_keys = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)
+    return [rrf_docs[k] for k in sorted_keys]
+
+return hybrid | RunnableLambda(rrf_merge)
 
 
 def generate_answer(question, contexts):
