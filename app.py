@@ -17,6 +17,20 @@ EMBEDDINGS = OpenAIEmbeddings(model="text-embedding-3-large")
 LLM = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 
+def rrf_merge(results, k=60):
+    rrf_scores = {}
+    rrf_docs = {}
+    for retriever_name, doc_list in results.items():
+        for rank, doc in enumerate(doc_list):
+            key = doc.page_content
+            if key not in rrf_scores:
+                rrf_scores[key] = 0.0
+                rrf_docs[key] = doc
+            rrf_scores[key] += 1 / (k + rank + 1)
+    sorted_keys = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)
+    return [rrf_docs[k] for k in sorted_keys]
+
+
 @st.cache_resource
 def load_retriever():
     db = FAISS.load_local(
@@ -36,25 +50,12 @@ def load_retriever():
     bm25_retriever = BM25Retriever.from_documents(docs)
     bm25_retriever.k = 4
 
-   hybrid = RunnableParallel(
-    bm25=bm25_retriever,
-    vector=vector_retriever
-)
+    hybrid = RunnableParallel(
+        bm25=bm25_retriever,
+        vector=vector_retriever
+    )
 
-def rrf_merge(results, k=60):
-    rrf_scores = {}
-    rrf_docs = {}
-    for retriever_name, doc_list in results.items():
-        for rank, doc in enumerate(doc_list):
-            key = doc.page_content
-            if key not in rrf_scores:
-                rrf_scores[key] = 0.0
-                rrf_docs[key] = doc
-            rrf_scores[key] += 1 / (k + rank + 1)
-    sorted_keys = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)
-    return [rrf_docs[k] for k in sorted_keys]
-
-return hybrid | RunnableLambda(rrf_merge)
+    return hybrid | RunnableLambda(rrf_merge)
 
 
 def generate_answer(question, contexts):
