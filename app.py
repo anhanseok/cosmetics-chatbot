@@ -19,7 +19,7 @@ FAISS_PATH = "./faiss_db"
 DOCS_PATH = "./faiss_db/review_docs.pkl"
 
 EMBEDDINGS = OpenAIEmbeddings(model="text-embedding-3-large")
-LLM = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+LLM = ChatOpenAI(model="gpt-4o", temperature=0)
 
 
 def get_product_image(product_name):
