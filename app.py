@@ -11,6 +11,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.runnables import RunnableParallel, RunnableLambda
 
+# 환경변수 로드 및 API 키 설정
 load_dotenv()
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
@@ -53,6 +54,36 @@ def get_product_image(product_name):
     return None
 
 
+def get_product_shopping_info(product_name):
+    client_id = os.environ.get("NAVER_CLIENT_ID")
+    client_secret = os.environ.get("NAVER_CLIENT_SECRET")
+
+    try:
+        response = req.get(
+            "https://openapi.naver.com/v1/search/shop.json",
+            headers={
+                "X-Naver-Client-Id": client_id,
+                "X-Naver-Client-Secret": client_secret,
+            },
+            params={
+                "query": product_name,
+                "display": 1,
+                "sort": "sim"
+            }
+        )
+        result = response.json()
+        if result.get("items"):
+            item = result["items"][0]
+            return {
+                "lprice": int(item.get("lprice", 0)),
+                "link": item.get("link"),
+                "title": item.get("title").replace("<b>", "").replace("</b>", "")
+            }
+    except:
+        pass
+    return None
+
+
 def rrf_merge(results, k=60):
     rrf_scores = {}
     rrf_docs = {}
@@ -87,139 +118,4 @@ def load_retriever():
     bm25_retriever.k = 4
 
     hybrid = RunnableParallel(
-        bm25=bm25_retriever,
-        vector=vector_retriever
-    )
-
-    return hybrid | RunnableLambda(rrf_merge)
-
-
-def generate_answer(question, contexts):
-    context_text = "\n\n".join(contexts)
-    prompt = f"""
-너는 올리브영 화장품 리뷰 기반 추천 AI야.
-아래 Context를 참고해서 최대한 답변해줘.
-
-규칙:
-1. Context에 있는 제품 중 질문과 가장 관련 있는 제품 1개를 추천해.
-2. 추천 근거는 Context의 리뷰 내용을 바탕으로 설명해.
-3. 답변 첫 문장은 추천 제품명으로 시작해.
-4. Context에 완벽히 맞는 제품이 없어도 가장 가까운 제품을 추천해.
-5. 답변은 2~3문장으로 작성해.
-
-답변 형식:
-추천 제품: 상품명
-추천 이유: 리뷰에서 확인된 근거
-
-[Context]
-{context_text}
-
-[Question]
-{question}
-
-[Answer]
-"""
-    response = LLM.invoke(prompt)
-    return response.content
-
-
-def extract_product_name(answer):
-    for line in answer.split("\n"):
-        if "추천 제품:" in line:
-            return line.replace("추천 제품:", "").strip()
-    return None
-
-
-# ── UI ──────────────────────────────────────────────
-st.set_page_config(
-    page_title="AI 화장품 추천 및 상담 챗봇",
-    page_icon="💄",
-    layout="wide"
-)
-
-st.title("💄 AI 화장품 추천 및 상담 챗봇")
-st.write("피부 타입과 고민을 입력하면 맞춤형 화장품을 추천하고, 궁금한 점을 상담해줍니다.")
-
-with st.sidebar:
-    st.header("피부 정보 입력")
-    skin_type = st.selectbox(
-        "피부 타입",
-        ["건성", "지성", "복합성", "민감성", "수부지", "잘 모르겠음"]
-    )
-    concerns = st.multiselect(
-        "피부 고민",
-        ["여드름", "홍조", "건조함", "피지", "모공", "잡티", "각질", "탄력 저하"]
-    )
-    texture = st.selectbox(
-        "선호 제형",
-        ["상관없음", "크림", "젤", "로션", "세럼", "토너", "패드"]
-    )
-    recommend_btn = st.button("✨ 화장품 추천받기", use_container_width=True)
-
-# ── 추천 ────────────────────────────────────────────
-st.subheader("✨ 맞춤 화장품 추천")
-if recommend_btn:
-    if not concerns:
-        st.warning("피부 고민을 하나 이상 선택해주세요.")
-    else:
-        concerns_str = ", ".join(concerns)
-        query = f"{skin_type} 피부에 {concerns_str} 고민이 있고 {texture} 제형을 원해요. 맞는 제품 추천해줘."
-
-        with st.spinner("추천 중..."):
-            retriever = load_retriever()
-            docs = retriever.invoke(query)
-            contexts = [doc.page_content for doc in docs]
-            answer = generate_answer(query, contexts)
-
-        with st.container(border=True):
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                st.markdown("### 추천 결과")
-                st.write(answer)
-            with col2:
-                product_name = extract_product_name(answer)
-                if product_name:
-                    img_bytes = get_product_image(product_name)
-                    if img_bytes:
-                        try:
-                            img = Image.open(io.BytesIO(img_bytes))
-                            st.image(img, width=200)
-                        except:
-                            pass
-
-# ── 챗봇 ────────────────────────────────────────────
-st.divider()
-st.subheader("💬 피부 상담 챗봇")
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-for msg in st.session_state.messages:
-    st.chat_message(msg["role"]).write(msg["content"])
-
-question = st.chat_input("화장품이나 피부 고민에 대해 질문해보세요.")
-if question:
-    st.session_state.messages.append({"role": "user", "content": question})
-    st.chat_message("user").write(question)
-
-    concerns_str = ", ".join(concerns) if concerns else "없음"
-    full_question = f"[피부타입: {skin_type}, 고민: {concerns_str}, 선호제형: {texture}]\n{question}"
-
-    with st.spinner("답변 생성 중..."):
-        retriever = load_retriever()
-        docs = retriever.invoke(full_question)
-        contexts = [doc.page_content for doc in docs]
-        answer = generate_answer(full_question, contexts)
-
-    st.session_state.messages.append({"role": "assistant", "content": answer})
-    st.chat_message("assistant").write(answer)
-
-    product_name = extract_product_name(answer)
-    if product_name:
-        img_bytes = get_product_image(product_name)
-        if img_bytes:
-            try:
-                img = Image.open(io.BytesIO(img_bytes))
-                st.image(img, width=200)
-            except:
-                pass
+        bm25=
