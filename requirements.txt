@@ -6,3 +6,4 @@ openai
 python-dotenv
 streamlit
 rank_bm25
+Pillow
