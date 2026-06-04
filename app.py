@@ -1,15 +1,18 @@
 import os
+import io
 import pickle
 import requests as req
 import streamlit as st
 from dotenv import load_dotenv
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+from PIL import Image
+
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.runnables import RunnableParallel, RunnableLambda
 
 load_dotenv()
+os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
 FAISS_PATH = "./faiss_db"
 DOCS_PATH = "./faiss_db/review_docs.pkl"
@@ -30,14 +33,21 @@ def get_product_image(product_name):
                 "X-Naver-Client-Secret": client_secret,
             },
             params={
-                "query": f"{product_name} 화장품",
-                "display": 1,
+                "query": f"{product_name} 올리브영",
+                "display": 3,
                 "sort": "sim"
             }
         )
         result = response.json()
         if result.get("items"):
-            return result["items"][0]["link"]
+            for item in result["items"]:
+                img_url = item["link"]
+                try:
+                    img_response = req.get(img_url, timeout=3)
+                    if img_response.status_code == 200:
+                        return img_response.content
+                except:
+                    continue
     except:
         pass
     return None
@@ -169,9 +179,13 @@ if recommend_btn:
             with col2:
                 product_name = extract_product_name(answer)
                 if product_name:
-                    img_url = get_product_image(product_name)
-                    if img_url:
-                        st.image(img_url, width=200)
+                    img_bytes = get_product_image(product_name)
+                    if img_bytes:
+                        try:
+                            img = Image.open(io.BytesIO(img_bytes))
+                            st.image(img, width=200)
+                        except:
+                            pass
 
 # ── 챗봇 ────────────────────────────────────────────
 st.divider()
@@ -200,9 +214,12 @@ if question:
     st.session_state.messages.append({"role": "assistant", "content": answer})
     st.chat_message("assistant").write(answer)
 
-    # 챗봇 답변에도 이미지 표시
     product_name = extract_product_name(answer)
     if product_name:
-        img_url = get_product_image(product_name)
-        if img_url:
-            st.image(img_url, width=200)
+        img_bytes = get_product_image(product_name)
+        if img_bytes:
+            try:
+                img = Image.open(io.BytesIO(img_bytes))
+                st.image(img, width=200)
+            except:
+                pass
