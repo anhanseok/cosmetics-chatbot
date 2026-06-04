@@ -1,8 +1,9 @@
 import os
 import pickle
+import requests as req
 import streamlit as st
 from dotenv import load_dotenv
-
+os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.retrievers import BM25Retriever
@@ -15,6 +16,31 @@ DOCS_PATH = "./faiss_db/review_docs.pkl"
 
 EMBEDDINGS = OpenAIEmbeddings(model="text-embedding-3-large")
 LLM = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+
+def get_product_image(product_name):
+    client_id = os.environ.get("NAVER_CLIENT_ID")
+    client_secret = os.environ.get("NAVER_CLIENT_SECRET")
+
+    try:
+        response = req.get(
+            "https://openapi.naver.com/v1/search/image",
+            headers={
+                "X-Naver-Client-Id": client_id,
+                "X-Naver-Client-Secret": client_secret,
+            },
+            params={
+                "query": f"{product_name} 화장품",
+                "display": 1,
+                "sort": "sim"
+            }
+        )
+        result = response.json()
+        if result.get("items"):
+            return result["items"][0]["link"]
+    except:
+        pass
+    return None
 
 
 def rrf_merge(results, k=60):
@@ -87,6 +113,13 @@ def generate_answer(question, contexts):
     return response.content
 
 
+def extract_product_name(answer):
+    for line in answer.split("\n"):
+        if "추천 제품:" in line:
+            return line.replace("추천 제품:", "").strip()
+    return None
+
+
 # ── UI ──────────────────────────────────────────────
 st.set_page_config(
     page_title="AI 화장품 추천 및 상담 챗봇",
@@ -129,8 +162,16 @@ if recommend_btn:
             answer = generate_answer(query, contexts)
 
         with st.container(border=True):
-            st.markdown("### 추천 결과")
-            st.write(answer)
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.markdown("### 추천 결과")
+                st.write(answer)
+            with col2:
+                product_name = extract_product_name(answer)
+                if product_name:
+                    img_url = get_product_image(product_name)
+                    if img_url:
+                        st.image(img_url, width=200)
 
 # ── 챗봇 ────────────────────────────────────────────
 st.divider()
@@ -158,3 +199,10 @@ if question:
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
     st.chat_message("assistant").write(answer)
+
+    # 챗봇 답변에도 이미지 표시
+    product_name = extract_product_name(answer)
+    if product_name:
+        img_url = get_product_image(product_name)
+        if img_url:
+            st.image(img_url, width=200)
