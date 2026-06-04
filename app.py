@@ -128,7 +128,6 @@ def load_retriever():
 def generate_answer(question, contexts):
     context_text = "\n\n".join(contexts)
     prompt = f"""
-prompt = f"""
 너는 올리브영 화장품 리뷰 기반 추천 AI야.
 아래 Context를 참고해서 답변해줘.
 
