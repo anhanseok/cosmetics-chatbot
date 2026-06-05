@@ -13,12 +13,11 @@ from langchain_core.runnables import RunnableParallel, RunnableLambda
 # ==========================================
 # API 및 LangSmith 환경변수 설정
 # ==========================================
-# 1. OpenAI 키 설정
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"] # <-- 여기를 변수명으로 수정!
+os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
 os.environ["LANGCHAIN_PROJECT"] = "OliveYoung_Cosmetics_Bot"
 
 
@@ -27,6 +26,35 @@ DOCS_PATH = "./faiss_db/review_docs.pkl"
 
 EMBEDDINGS = OpenAIEmbeddings(model="text-embedding-3-large")
 LLM = ChatOpenAI(model="gpt-4o", temperature=0)
+
+# ==========================================
+# 쿼리 확장 딕셔너리
+# ==========================================
+QUERY_EXPANSION = {
+    "틴트": "틴트 립틴트 립스틱 립메이크업 립컬러",
+    "립": "립스틱 립틴트 틴트 립메이크업 립컬러",
+    "세럼": "세럼 에센스 앰플 에센스_세럼_앰플",
+    "에센스": "에센스 세럼 앰플 에센스_세럼_앰플",
+    "앰플": "앰플 세럼 에센스 에센스_세럼_앰플",
+    "쿠션": "쿠션 파운데이션 베이스메이크업 BB크림",
+    "파데": "파운데이션 쿠션 베이스메이크업 파운데이션",
+    "파운데이션": "파운데이션 쿠션 베이스메이크업",
+    "베이스": "베이스메이크업 파운데이션 쿠션 BB크림 CC크림",
+    "선크림": "선크림 선케어 자외선차단 썬크림 썬스크린",
+    "썬크림": "썬크림 선크림 선케어 자외선차단 썬스크린",
+    "로션": "로션 에멀전 수분크림",
+    "토너": "토너 스킨 화장수",
+    "스킨": "스킨 토너 화장수",
+    "립메이크업": "립메이크업 립스틱 틴트 립틴트 립컬러 립글로스",
+    "베이스메이크업": "베이스메이크업 파운데이션 쿠션 BB크림 CC크림 프라이머",
+}
+
+def expand_query(question):
+    expanded = question
+    for keyword, synonyms in QUERY_EXPANSION.items():
+        if keyword in question:
+            expanded += f" {synonyms}"
+    return expanded
 
 
 def get_product_image(product_name):
@@ -144,7 +172,8 @@ def generate_answer(question, contexts):
 3. 답변 첫 문장은 추천 제품명으로 시작해.
 4. 질문의 핵심 키워드(예: 토너, 선크림, 시원한 등)와 관련된 제품만 추천해.
 5. Context에 질문과 관련된 제품이 없으면 "관련 제품을 찾지 못했습니다."라고 답해.
-6. 답변은 2~3문장으로 작성해.
+6. 사용자가 원하는 제형과 다른 제품은 추천하지 마.
+7. 답변은 2~3문장으로 작성해.
 
 답변 형식:
 추천 제품: 상품명
@@ -191,7 +220,7 @@ with st.sidebar:
     )
     texture = st.selectbox(
         "선호 제형",
-        ["상관없음", "크림", "젤", "로션", "세럼", "토너", "패드"]
+        ["상관없음", "크림", "젤", "로션", "세럼", "립메이크업", "베이스메이크업"]  # 토너/패드 제거, 립/베이스 추가
     )
     recommend_btn = st.button("✨ 화장품 추천받기", use_container_width=True)
 
@@ -206,9 +235,10 @@ if recommend_btn:
 
         with st.spinner("추천 중..."):
             retriever = load_retriever()
-            docs = retriever.invoke(query)
+            expanded_query = expand_query(query)          # 쿼리 확장
+            docs = retriever.invoke(expanded_query)       # 확장된 쿼리로 검색
             contexts = [doc.page_content for doc in docs]
-            answer = generate_answer(query, contexts)
+            answer = generate_answer(query, contexts)     # GPT엔 원본 쿼리
 
         with st.container(border=True):
             col1, col2 = st.columns([2, 1])
@@ -218,7 +248,6 @@ if recommend_btn:
             with col2:
                 product_name = extract_product_name(answer)
                 if product_name:
-                    # 이미지 렌더링
                     img_bytes = get_product_image(product_name)
                     if img_bytes:
                         try:
@@ -226,8 +255,7 @@ if recommend_btn:
                             st.image(img, width=200)
                         except:
                             pass
-                    
-                    # 네이버 최저가 및 링크 렌더링
+
                     shop_info = get_product_shopping_info(product_name)
                     if shop_info:
                         formatted_price = f"{shop_info['lprice']:,}원"
@@ -254,16 +282,16 @@ if question:
 
     with st.spinner("답변 생성 중..."):
         retriever = load_retriever()
-        docs = retriever.invoke(full_question)
+        expanded_question = expand_query(question)              # 순수 질문만 확장
+        docs = retriever.invoke(expanded_question)              # 확장된 쿼리로 검색
         contexts = [doc.page_content for doc in docs]
-        answer = generate_answer(full_question, contexts)
+        answer = generate_answer(full_question, contexts)       # GPT엔 피부정보 포함
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
     st.chat_message("assistant").write(answer)
 
     product_name = extract_product_name(answer)
     if product_name:
-        # 이미지 렌더링
         img_bytes = get_product_image(product_name)
         if img_bytes:
             try:
@@ -271,8 +299,7 @@ if question:
                 st.image(img, width=200)
             except:
                 pass
-        
-        # 네이버 최저가 및 링크 렌더링
+
         shop_info = get_product_shopping_info(product_name)
         if shop_info:
             formatted_price = f"{shop_info['lprice']:,}원"
