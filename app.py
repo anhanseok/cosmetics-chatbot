@@ -3,7 +3,6 @@ import io
 import pickle
 import requests as req
 import streamlit as st
-from dotenv import load_dotenv
 from PIL import Image
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -11,9 +10,18 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.runnables import RunnableParallel, RunnableLambda
 
-# 환경변수 로드 및 API 키 설정
-load_dotenv()
+# ==========================================
+# API 및 LangSmith 환경변수 설정
+# ==========================================
+# 1. OpenAI 키 설정
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+
+# 2. LangSmith 연결 설정
+os.environ["LANGCHAIN_TRACING_V2"] = "true"
+os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
+os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
+os.environ["LANGCHAIN_PROJECT"] = "OliveYoung_Cosmetics_Bot" # 대시보드 프로젝트명
+# ==========================================
 
 FAISS_PATH = "./faiss_db"
 DOCS_PATH = "./faiss_db/review_docs.pkl"
