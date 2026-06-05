@@ -16,12 +16,11 @@ from langchain_core.runnables import RunnableParallel, RunnableLambda
 # 1. OpenAI 키 설정
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
-# 2. LangSmith 연결 설정
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
-os.environ["LANGCHAIN_PROJECT"] = "OliveYoung_Cosmetics_Bot" # 대시보드 프로젝트명
-# ==========================================
+os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"] # <-- 여기를 변수명으로 수정!
+os.environ["LANGCHAIN_PROJECT"] = "OliveYoung_Cosmetics_Bot"
+
 
 FAISS_PATH = "./faiss_db"
 DOCS_PATH = "./faiss_db/review_docs.pkl"
