@@ -20,7 +20,6 @@ os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
 os.environ["LANGCHAIN_PROJECT"] = "OliveYoung_Cosmetics_Bot"
 
-
 FAISS_PATH = "./faiss_db"
 DOCS_PATH = "./faiss_db/review_docs.pkl"
 
@@ -31,39 +30,28 @@ LLM = ChatOpenAI(model="gpt-4o", temperature=0)
 # 쿼리 확장 딕셔너리
 # ==========================================
 QUERY_EXPANSION = {
-    # 립메이크업
     "틴트": "틴트 립틴트 립스틱 립메이크업 립컬러 립글로스",
     "립": "립스틱 립틴트 틴트 립메이크업 립컬러 립글로스",
     "립메이크업": "립메이크업 립스틱 틴트 립틴트 립컬러 립글로스",
-
-    # 베이스메이크업
     "쿠션": "쿠션 파운데이션 베이스메이크업 BB크림",
     "파데": "파운데이션 쿠션 베이스메이크업",
     "파운데이션": "파운데이션 쿠션 베이스메이크업",
     "베이스": "베이스메이크업 파운데이션 쿠션 BB크림",
     "베이스메이크업": "베이스메이크업 파운데이션 쿠션 BB크림",
-
-    # 선케어
     "선크림": "선크림 선케어 자외선차단 썬크림 썬스크린",
     "썬크림": "썬크림 선크림 선케어 자외선차단",
     "자외선": "자외선차단 선크림 선케어 썬스크린",
-
-    # 에센스_세럼_앰플
     "세럼": "세럼 에센스 앰플 에센스_세럼_앰플",
     "에센스": "에센스 세럼 앰플 에센스_세럼_앰플",
     "앰플": "앰플 세럼 에센스 에센스_세럼_앰플",
-
-    # 클렌징폼
     "클렌징폼": "클렌징폼 클렌징 세안 세정",
     "클렌징": "클렌징 클렌징폼 클렌징오일 세안 세정",
     "세안": "세안 클렌징 클렌징폼 클렌징오일",
-    "폼": "클렌징폼 폼클렌저 세안",
-
-    # 클렌징오일
     "클렌징오일": "클렌징오일 클렌징 오일클렌저 메이크업제거",
     "오일클렌저": "클렌징오일 오일클렌저 클렌징",
     "메이크업제거": "클렌징오일 클렌징 메이크업제거",
 }
+
 def expand_query(question):
     expanded = question
     for keyword, synonyms in QUERY_EXPANSION.items():
@@ -75,7 +63,6 @@ def expand_query(question):
 def get_product_image(product_name):
     client_id = os.environ.get("NAVER_CLIENT_ID")
     client_secret = os.environ.get("NAVER_CLIENT_SECRET")
-
     try:
         response = req.get(
             "https://openapi.naver.com/v1/search/image",
@@ -83,11 +70,7 @@ def get_product_image(product_name):
                 "X-Naver-Client-Id": client_id,
                 "X-Naver-Client-Secret": client_secret,
             },
-            params={
-                "query": f"{product_name} 올리브영",
-                "display": 3,
-                "sort": "sim"
-            }
+            params={"query": f"{product_name} 올리브영", "display": 3, "sort": "sim"}
         )
         result = response.json()
         if result.get("items"):
@@ -107,7 +90,6 @@ def get_product_image(product_name):
 def get_product_shopping_info(product_name):
     client_id = os.environ.get("NAVER_CLIENT_ID")
     client_secret = os.environ.get("NAVER_CLIENT_SECRET")
-
     try:
         response = req.get(
             "https://openapi.naver.com/v1/search/shop.json",
@@ -115,11 +97,7 @@ def get_product_shopping_info(product_name):
                 "X-Naver-Client-Id": client_id,
                 "X-Naver-Client-Secret": client_secret,
             },
-            params={
-                "query": product_name,
-                "display": 1,
-                "sort": "sim"
-            }
+            params={"query": product_name, "display": 1, "sort": "sim"}
         )
         result = response.json()
         if result.get("items"):
@@ -150,28 +128,16 @@ def rrf_merge(results, k=60):
 
 @st.cache_resource
 def load_retriever():
-    db = FAISS.load_local(
-        FAISS_PATH,
-        EMBEDDINGS,
-        allow_dangerous_deserialization=True
-    )
-
+    db = FAISS.load_local(FAISS_PATH, EMBEDDINGS, allow_dangerous_deserialization=True)
     with open(DOCS_PATH, "rb") as f:
         docs = pickle.load(f)
-
     vector_retriever = db.as_retriever(
         search_type="mmr",
         search_kwargs={"k": 4, "fetch_k": 12, "lambda_mult": 0.8},
     )
-
     bm25_retriever = BM25Retriever.from_documents(docs)
     bm25_retriever.k = 4
-
-    hybrid = RunnableParallel(
-        bm25=bm25_retriever,
-        vector=vector_retriever
-    )
-
+    hybrid = RunnableParallel(bm25=bm25_retriever, vector=vector_retriever)
     return hybrid | RunnableLambda(rrf_merge)
 
 
@@ -213,7 +179,27 @@ def extract_product_name(answer):
     return None
 
 
-# ── UI ──────────────────────────────────────────────
+def render_product_result(answer):
+    """제품 이미지 + 최저가 렌더링"""
+    product_name = extract_product_name(answer)
+    if product_name:
+        img_bytes = get_product_image(product_name)
+        if img_bytes:
+            try:
+                img = Image.open(io.BytesIO(img_bytes))
+                st.image(img, width=200)
+            except:
+                pass
+        shop_info = get_product_shopping_info(product_name)
+        if shop_info:
+            formatted_price = f"{shop_info['lprice']:,}원"
+            st.markdown(f"**최저가:** {formatted_price}")
+            st.markdown(f"[🛒 네이버 쇼핑에서 보기]({shop_info['link']})")
+
+
+# ==========================================
+# UI 설정
+# ==========================================
 st.set_page_config(
     page_title="AI 화장품 추천 및 상담 챗봇",
     page_icon="💄",
@@ -223,37 +209,82 @@ st.set_page_config(
 st.title("💄 AI 화장품 추천 및 상담 챗봇")
 st.write("피부 타입과 고민을 입력하면 맞춤형 화장품을 추천하고, 궁금한 점을 상담해줍니다.")
 
+# ==========================================
+# 사이드바
+# ==========================================
 with st.sidebar:
     st.header("피부 정보 입력")
-    skin_type = st.selectbox(
-        "피부 타입",
-        ["건성", "지성", "복합성", "민감성", "수부지", "잘 모르겠음"]
-    )
-    concerns = st.multiselect(
-        "피부 고민",
-        ["여드름", "홍조", "건조함", "피지", "모공", "잡티", "각질", "탄력 저하"]
-    )
-    texture = st.selectbox(
-        "선호 제형",
-        ["상관없음", "크림", "젤", "로션", "세럼", "립메이크업", "베이스메이크업"]  # 토너/패드 제거, 립/베이스 추가
-    )
+
+    category = st.radio("카테고리", ["기초제품", "메이크업"], horizontal=True)
+
+    skin_type = ""
+    concerns = []
+    skin_tone = ""
+    detail = ""
+    texture = ""
+
+    if category == "기초제품":
+        texture = st.selectbox(
+            "제품 종류",
+            ["상관없음", "선케어", "에센스_세럼_앰플", "클렌징오일", "클렌징폼"]
+        )
+        skin_type = st.selectbox(
+            "피부 타입",
+            ["건성", "지성", "복합성", "민감성", "수부지", "잘 모르겠음"]
+        )
+        concerns = st.multiselect(
+            "피부 고민",
+            ["여드름", "홍조", "건조함", "피지", "모공", "잡티", "각질", "탄력 저하"]
+        )
+
+    else:  # 메이크업
+        texture = st.selectbox("제품 종류", ["립메이크업", "베이스메이크업"])
+
+        if texture == "립메이크업":
+            skin_tone = st.selectbox(
+                "피부톤",
+                ["쿨톤", "웜톤", "뉴트럴톤", "잘 모르겠음"]
+            )
+            detail = st.selectbox(
+                "세부 정보",
+                ["상관없음", "발색", "지속력", "착색", "광택", "촉촉"]
+            )
+
+        elif texture == "베이스메이크업":
+            skin_tone = st.selectbox(
+                "피부톤",
+                ["밝은 피부", "중간 피부", "어두운 피부", "잘 모르겠음"]
+            )
+            detail = st.selectbox(
+                "세부 정보",
+                ["상관없음", "커버력", "지속력", "매트", "세미매트", "촉촉", "밀착", "모공", "요철"]
+            )
+
     recommend_btn = st.button("✨ 화장품 추천받기", use_container_width=True)
 
-# ── 추천 ────────────────────────────────────────────
+
+# ==========================================
+# 추천 버튼
+# ==========================================
 st.subheader("✨ 맞춤 화장품 추천")
+
 if recommend_btn:
-    if not concerns:
+    if category == "기초제품" and not concerns:
         st.warning("피부 고민을 하나 이상 선택해주세요.")
     else:
-        concerns_str = ", ".join(concerns)
-        query = f"{skin_type} 피부에 {concerns_str} 고민이 있고 {texture} 제형을 원해요. 맞는 제품 추천해줘."
+        # 쿼리 생성
+        if category == "기초제품":
+            concerns_str = ", ".join(concerns)
+            query = f"{skin_type} 피부에 {concerns_str} 고민이 있고 {texture} 제품을 원해요. 맞는 제품 추천해줘."
+        else:
+            query = f"{texture} 제품 중 {skin_tone} 피부톤에 {detail} 특성을 가진 제품 추천해줘."
 
         with st.spinner("추천 중..."):
             retriever = load_retriever()
-            expanded_query = expand_query(query)          # 쿼리 확장
-            docs = retriever.invoke(expanded_query)       # 확장된 쿼리로 검색
+            expanded_query = expand_query(query)
+            docs = retriever.invoke(expanded_query)
             contexts = [doc.page_content for doc in docs]
-            answer = generate_answer(query, contexts)     # GPT엔 원본 쿼리
+            answer = generate_answer(query, contexts)
 
         with st.container(border=True):
             col1, col2 = st.columns([2, 1])
@@ -261,23 +292,12 @@ if recommend_btn:
                 st.markdown("### 추천 결과")
                 st.write(answer)
             with col2:
-                product_name = extract_product_name(answer)
-                if product_name:
-                    img_bytes = get_product_image(product_name)
-                    if img_bytes:
-                        try:
-                            img = Image.open(io.BytesIO(img_bytes))
-                            st.image(img, width=200)
-                        except:
-                            pass
+                render_product_result(answer)
 
-                    shop_info = get_product_shopping_info(product_name)
-                    if shop_info:
-                        formatted_price = f"{shop_info['lprice']:,}원"
-                        st.markdown(f"**최저가:** {formatted_price}")
-                        st.markdown(f"[🛒 네이버 쇼핑에서 보기]({shop_info['link']})")
 
-# ── 챗봇 ────────────────────────────────────────────
+# ==========================================
+# 챗봇
+# ==========================================
 st.divider()
 st.subheader("💬 피부 상담 챗봇")
 
@@ -292,30 +312,23 @@ if question:
     st.session_state.messages.append({"role": "user", "content": question})
     st.chat_message("user").write(question)
 
-    concerns_str = ", ".join(concerns) if concerns else "없음"
-    full_question = f"[피부타입: {skin_type}, 고민: {concerns_str}, 선호제형: {texture}]\n{question}"
+    # 피부 정보 컨텍스트 구성
+    if category == "기초제품":
+        concerns_str = ", ".join(concerns) if concerns else "없음"
+        full_question = f"[피부타입: {skin_type}, 고민: {concerns_str}, 제품종류: {texture}]\n{question}"
+    else:
+        full_question = f"[카테고리: {texture}, 피부톤: {skin_tone}, 세부정보: {detail}]\n{question}"
 
     with st.spinner("답변 생성 중..."):
         retriever = load_retriever()
-        expanded_question = expand_query(question)              # 순수 질문만 확장
-        docs = retriever.invoke(expanded_question)              # 확장된 쿼리로 검색
+        expanded_question = expand_query(question)
+        docs = retriever.invoke(expanded_question)
         contexts = [doc.page_content for doc in docs]
-        answer = generate_answer(full_question, contexts)       # GPT엔 피부정보 포함
+        answer = generate_answer(full_question, contexts)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
     st.chat_message("assistant").write(answer)
 
-    product_name = extract_product_name(answer)
-    if product_name:
-        img_bytes = get_product_image(product_name)
-        if img_bytes:
-            try:
-                img = Image.open(io.BytesIO(img_bytes))
-                st.image(img, width=200)
-            except:
-                pass
-
-        shop_info = get_product_shopping_info(product_name)
-        if shop_info:
-            formatted_price = f"{shop_info['lprice']:,}원"
-            st.markdown(f"**최저가:** {formatted_price} | [🛒 네이버 쇼핑에서 보기]({shop_info['link']})")
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        render_product_result(answer)
