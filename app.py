@@ -503,8 +503,8 @@ def generate_consult(question, history):
 # ==========================================
 # 순수 LLM 답변 (RAG 없음, 비교용)
 # ==========================================
-def generate_llm_only(question, history=None):
-    """RAG 없이 gpt-4o-mini 자체 지식으로만 답변 (RAG vs LLM 비교용, mini 사용)"""
+def generate_llm_only(question, q_type, history=None):
+    """RAG 없이 gpt-4o-mini 자체 지식으로만 답변 (q_type에 따라 프롬프트 분기)"""
     history_text = ""
     if history:
         recent = history[-6:]
@@ -514,8 +514,8 @@ def generate_llm_only(question, history=None):
             turns.append(f"{role}: {msg['content']}")
         history_text = "\n".join(turns)
 
-    response = LLM_MINI.invoke(f"""
-너는 화장품 전문가야. 아래 질문에 대해 네 지식만으로 답변해줘.
+    if q_type == "recommend":
+        prompt = f"""너는 화장품 전문가야. 아래 질문에 대해 네 지식만으로 답변해줘.
 외부 리뷰 데이터 없이 일반적인 화장품 지식을 바탕으로 답변해.
 
 규칙:
@@ -537,8 +537,24 @@ def generate_llm_only(question, history=None):
 {history_text if history_text else "없음"}
 
 [Question]
-{question}
-""")
+{question}"""
+
+    else:  # consult
+        prompt = f"""너는 피부 전문가야. 아래 질문에 대해 네 지식만으로 답변해줘.
+외부 리뷰 데이터 없이 일반적인 피부 지식을 바탕으로 답변해.
+
+규칙:
+1. 제품 추천은 절대 하지 마.
+2. 고민의 원인 설명 + 생활습관/관리법 위주로 답변해.
+3. 3~4문장으로 간결하게 답변해.
+
+[이전 대화]
+{history_text if history_text else "없음"}
+
+[Question]
+{question}"""
+
+    response = LLM_MINI.invoke(prompt)
     return response.content
 
 
@@ -578,7 +594,7 @@ if question:
             llm_answer = None  # vague는 비교 불필요
         elif q_type == "consult":
             rag_answer = generate_consult(question, history)
-            llm_answer = generate_llm_only(full_question, history=history)
+            llm_answer = generate_llm_only(full_question, q_type="consult", history=history)
         else:  # recommend
             retriever = load_retriever()
             search_query = build_search_query(question, history)
@@ -586,7 +602,7 @@ if question:
             docs = retriever.invoke(expanded_question)
             contexts = [doc.page_content for doc in docs]
             rag_answer = generate_answer(full_question, contexts, history=history)
-            llm_answer = generate_llm_only(full_question, history=history)
+            llm_answer = generate_llm_only(full_question, q_type="recommend", history=history)
 
     # 세션에는 RAG 답변 저장
     st.session_state.messages.append({"role": "assistant", "content": rag_answer})
