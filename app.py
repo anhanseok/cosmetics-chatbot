@@ -25,6 +25,7 @@ DOCS_PATH = "./faiss_db/review_docs.pkl"
 
 EMBEDDINGS = OpenAIEmbeddings(model="text-embedding-3-large")
 LLM = ChatOpenAI(model="gpt-4o", temperature=0)
+LLM_MINI = ChatOpenAI(model="gpt-4o-mini", temperature=0)  # LLM only 비교용
 
 # ==========================================
 # 쿼리 확장 딕셔너리
@@ -500,6 +501,48 @@ def generate_consult(question, history):
 
 
 # ==========================================
+# 순수 LLM 답변 (RAG 없음, 비교용)
+# ==========================================
+def generate_llm_only(question, history=None):
+    """RAG 없이 gpt-4o-mini 자체 지식으로만 답변 (RAG vs LLM 비교용, mini 사용)"""
+    history_text = ""
+    if history:
+        recent = history[-6:]
+        turns = []
+        for msg in recent:
+            role = "사용자" if msg["role"] == "user" else "AI"
+            turns.append(f"{role}: {msg['content']}")
+        history_text = "\n".join(turns)
+
+    response = LLM_MINI.invoke(f"""
+너는 화장품 전문가야. 아래 질문에 대해 네 지식만으로 답변해줘.
+외부 리뷰 데이터 없이 일반적인 화장품 지식을 바탕으로 답변해.
+
+규칙:
+1. 제품 3개를 순위별로 추천해.
+2. 각 추천 이유는 일반적인 성분/특성 지식 기반으로 설명해.
+3. 답변 형식은 아래를 따라줘.
+
+답변 형식:
+추천 제품 1: 상품명
+추천 이유 1: 설명 (1~2문장)
+
+추천 제품 2: 상품명
+추천 이유 2: 설명 (1~2문장)
+
+추천 제품 3: 상품명
+추천 이유 3: 설명 (1~2문장)
+
+[이전 대화]
+{history_text if history_text else "없음"}
+
+[Question]
+{question}
+""")
+    return response.content
+
+
+# ==========================================
 # 챗봇
 # ==========================================
 st.divider()
@@ -527,24 +570,42 @@ if question:
 
     with st.spinner("답변 생성 중..."):
         if q_type == "vague":
-            answer = (
+            rag_answer = (
                 "어떤 종류의 화장품을 찾으시나요? 😊\n\n"
                 "예) 선크림, 립틴트, 세럼, 클렌징오일 등\n"
                 "피부 타입(건성/지성/민감성)이나 피부 고민(건조함/모공/여드름 등)도 알려주시면 더 잘 추천해드릴 수 있어요!"
             )
+            llm_answer = None
         elif q_type == "consult":
-            answer = generate_consult(question, history)
-        else:  # recommend
+            rag_answer = generate_consult(question, history)
+            llm_answer = None
+        else:  # recommend — RAG + LLM 동시 생성
             retriever = load_retriever()
             search_query = build_search_query(question, history)
             expanded_question = expand_query(search_query)
             docs = retriever.invoke(expanded_question)
             contexts = [doc.page_content for doc in docs]
-            answer = generate_answer(full_question, contexts, history=history)
+            rag_answer = generate_answer(full_question, contexts, history=history)
+            llm_answer = generate_llm_only(full_question, history=history)
 
-    st.session_state.messages.append({"role": "assistant", "content": answer})
-    st.chat_message("assistant").write(answer)
+    # 세션에는 RAG 답변 저장
+    st.session_state.messages.append({"role": "assistant", "content": rag_answer})
 
-    # Top3 제품 렌더링 (recommend일 때만)
-    if q_type == "recommend":
-        render_product_results(answer)
+    # ==========================================
+    # UI 렌더링: recommend면 2컬럼 비교, 아니면 단일
+    # ==========================================
+    if q_type == "recommend" and llm_answer:
+        col_rag, col_llm = st.columns(2)
+
+        with col_rag:
+            st.markdown("#### 📚 RAG 기반 추천")
+            st.caption("실제 리뷰 데이터 기반")
+            st.chat_message("assistant").write(rag_answer)
+            render_product_results(rag_answer)
+
+        with col_llm:
+            st.markdown("#### 🤖 LLM 기반 추천")
+            st.caption("AI 자체 지식 기반")
+            st.chat_message("assistant").write(llm_answer)
+    else:
+        st.chat_message("assistant").write(rag_answer)
