@@ -575,11 +575,11 @@ if question:
                 "예) 선크림, 립틴트, 세럼, 클렌징오일 등\n"
                 "피부 타입(건성/지성/민감성)이나 피부 고민(건조함/모공/여드름 등)도 알려주시면 더 잘 추천해드릴 수 있어요!"
             )
-            llm_answer = None
+            llm_answer = None  # vague는 비교 불필요
         elif q_type == "consult":
             rag_answer = generate_consult(question, history)
-            llm_answer = None
-        else:  # recommend — RAG + LLM 동시 생성
+            llm_answer = generate_llm_only(full_question, history=history)
+        else:  # recommend
             retriever = load_retriever()
             search_query = build_search_query(question, history)
             expanded_question = expand_query(search_query)
@@ -592,9 +592,9 @@ if question:
     st.session_state.messages.append({"role": "assistant", "content": rag_answer})
 
     # ==========================================
-    # UI 렌더링: recommend면 2컬럼 비교, 아니면 단일
+    # UI 렌더링: vague면 단일, 나머지는 2컬럼 비교
     # ==========================================
-    if q_type == "recommend" and llm_answer:
+    if llm_answer:
         col_rag, col_llm = st.columns(2)
 
         with col_rag:
@@ -605,7 +605,8 @@ if question:
                 unsafe_allow_html=True
             )
             st.chat_message("assistant").write(rag_answer)
-            render_product_results(rag_answer)
+            if q_type == "recommend":
+                render_product_results(rag_answer)
 
         with col_llm:
             st.markdown(
