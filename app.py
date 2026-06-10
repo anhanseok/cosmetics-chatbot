@@ -366,6 +366,27 @@ if recommend_btn:
 
 
 # ==========================================
+# 질문 구체성 판단
+# ==========================================
+def is_question_specific(question, history):
+    """질문이 충분히 구체적인지 판단. 후속 질문이면 무조건 specific으로 처리."""
+    if any(kw in question for kw in FOLLOWUP_KEYWORDS):
+        return True
+
+    response = LLM.invoke(f"""
+사용자가 화장품을 추천받으려 합니다.
+질문: "{question}"
+
+아래 기준으로 판단해:
+- 제품 종류(선크림/립/세럼/클렌징 등), 피부타입, 피부 고민, 피부톤 중 하나라도 언급되면 "specific"
+- 아무 정보도 없이 그냥 추천 요청만 하면 "vague"
+
+"specific" 또는 "vague" 중 하나만 답해.
+""")
+    return "specific" in response.content.lower()
+
+
+# ==========================================
 # 챗봇
 # ==========================================
 st.divider()
@@ -388,18 +409,27 @@ if question:
     else:
         full_question = f"[카테고리: {texture}, 피부톤: {skin_tone}, 세부정보: {detail}]\n{question}"
 
+    history = st.session_state.messages[:-1]
+    specific = is_question_specific(question, history)  # 한 번만 호출
+
     with st.spinner("답변 생성 중..."):
-        retriever = load_retriever()
-        # [수정] 후속 질문이면 이전 추천 제품명을 검색 쿼리에 보강
-        history = st.session_state.messages[:-1]
-        search_query = build_search_query(question, history)
-        expanded_question = expand_query(search_query)
-        docs = retriever.invoke(expanded_question)
-        contexts = [doc.page_content for doc in docs]
-        answer = generate_answer(full_question, contexts, history=history)
+        if not specific:
+            answer = (
+                "어떤 종류의 화장품을 찾으시나요? 😊\n\n"
+                "예) 선크림, 립틴트, 세럼, 클렌징오일 등\n"
+                "피부 타입(건성/지성/민감성)이나 피부 고민(건조함/모공/여드름 등)도 알려주시면 더 잘 추천해드릴 수 있어요!"
+            )
+        else:
+            retriever = load_retriever()
+            search_query = build_search_query(question, history)
+            expanded_question = expand_query(search_query)
+            docs = retriever.invoke(expanded_question)
+            contexts = [doc.page_content for doc in docs]
+            answer = generate_answer(full_question, contexts, history=history)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
     st.chat_message("assistant").write(answer)
 
-    # Top3 제품 렌더링
-    render_product_results(answer)
+    # Top3 제품 렌더링 (구체적 답변일 때만)
+    if specific:
+        render_product_results(answer)
