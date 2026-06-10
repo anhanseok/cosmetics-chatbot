@@ -141,24 +141,46 @@ def load_retriever():
     return hybrid | RunnableLambda(rrf_merge)
 
 
-def generate_answer(question, contexts):
+# ==========================================
+# [수정] Top3 추천 + 대화 히스토리 반영
+# ==========================================
+def generate_answer(question, contexts, history=None):
     context_text = "\n\n".join(contexts)
+
+    # 최근 3턴 히스토리 포맷팅
+    history_text = ""
+    if history:
+        recent = history[-6:]  # user+assistant 쌍 기준 최대 3턴 (6개 메시지)
+        turns = []
+        for msg in recent:
+            role = "사용자" if msg["role"] == "user" else "AI"
+            turns.append(f"{role}: {msg['content']}")
+        history_text = "\n".join(turns)
+
     prompt = f"""
 너는 올리브영 화장품 리뷰 기반 추천 AI야.
 아래 Context를 참고해서 답변해줘.
 
 규칙:
-1. Context에 있는 제품 중 질문과 가장 관련 있는 제품 1개를 추천해.
-2. 추천 근거는 Context의 리뷰 내용을 바탕으로 설명해.
-3. 답변 첫 문장은 추천 제품명으로 시작해.
-4. 질문의 핵심 키워드(예: 토너, 선크림, 시원한 등)와 관련된 제품만 추천해.
-5. Context에 질문과 관련된 제품이 없으면 "관련 제품을 찾지 못했습니다."라고 답해.
-6. 사용자가 원하는 제형과 다른 제품은 추천하지 마.
-7. 답변은 2~3문장으로 작성해.
+1. Context에 있는 제품 중 질문과 가장 관련 있는 제품 3개를 순위별로 추천해.
+2. 각 제품의 추천 근거는 Context의 리뷰 내용을 바탕으로 설명해.
+3. 질문의 핵심 키워드(예: 토너, 선크림, 시원한 등)와 관련된 제품만 추천해.
+4. Context에 질문과 관련된 제품이 없으면 "관련 제품을 찾지 못했습니다."라고 답해.
+5. 사용자가 원하는 제형과 다른 제품은 추천하지 마.
+6. 이전 대화가 있으면 맥락을 반영해서 답변해. (예: 이전에 언급한 피부 타입, 선호 등 유지)
 
-답변 형식:
-추천 제품: 상품명
-추천 이유: 리뷰에서 확인된 근거
+답변 형식 (반드시 아래 형식 그대로):
+추천 제품 1: 상품명
+추천 이유 1: 리뷰에서 확인된 근거 (1~2문장)
+
+추천 제품 2: 상품명
+추천 이유 2: 리뷰에서 확인된 근거 (1~2문장)
+
+추천 제품 3: 상품명
+추천 이유 3: 리뷰에서 확인된 근거 (1~2문장)
+
+[이전 대화]
+{history_text if history_text else "없음"}
 
 [Context]
 {context_text}
@@ -172,29 +194,51 @@ def generate_answer(question, contexts):
     return response.content
 
 
-def extract_product_name(answer):
+# ==========================================
+# [수정] Top3 제품명 파싱
+# ==========================================
+def extract_product_names(answer):
+    """'추천 제품 N: 상품명' 패턴으로 최대 3개 추출"""
+    products = []
     for line in answer.split("\n"):
-        if "추천 제품:" in line:
-            return line.replace("추천 제품:", "").strip()
-    return None
+        for i in range(1, 4):
+            prefix = f"추천 제품 {i}:"
+            if prefix in line:
+                name = line.replace(prefix, "").strip()
+                if name:
+                    products.append(name)
+    return products
 
 
-def render_product_result(answer):
-    """제품 이미지 + 최저가 렌더링"""
-    product_name = extract_product_name(answer)
-    if product_name:
-        img_bytes = get_product_image(product_name)
-        if img_bytes:
-            try:
-                img = Image.open(io.BytesIO(img_bytes))
-                st.image(img, width=200)
-            except:
-                pass
-        shop_info = get_product_shopping_info(product_name)
-        if shop_info:
-            formatted_price = f"{shop_info['lprice']:,}원"
-            st.markdown(f"**최저가:** {formatted_price}")
-            st.markdown(f"[🛒 네이버 쇼핑에서 보기]({shop_info['link']})")
+# ==========================================
+# [수정] Top3 이미지+가격 렌더링
+# ==========================================
+def render_product_results(answer):
+    """Top3 제품 이미지 + 최저가 렌더링"""
+    product_names = extract_product_names(answer)
+    if not product_names:
+        return
+
+    cols = st.columns(len(product_names))
+    for idx, (col, product_name) in enumerate(zip(cols, product_names)):
+        with col:
+            st.markdown(f"**{idx+1}위: {product_name}**")
+
+            img_bytes = get_product_image(product_name)
+            if img_bytes:
+                try:
+                    img = Image.open(io.BytesIO(img_bytes))
+                    st.image(img, use_container_width=True)
+                except:
+                    st.caption("이미지 없음")
+            else:
+                st.caption("이미지 없음")
+
+            shop_info = get_product_shopping_info(product_name)
+            if shop_info:
+                formatted_price = f"{shop_info['lprice']:,}원"
+                st.markdown(f"**최저가:** {formatted_price}")
+                st.markdown(f"[🛒 쇼핑 바로가기]({shop_info['link']})")
 
 
 # ==========================================
@@ -272,7 +316,6 @@ if recommend_btn:
     if category == "기초제품" and not concerns:
         st.warning("피부 고민을 하나 이상 선택해주세요.")
     else:
-        # 쿼리 생성
         if category == "기초제품":
             concerns_str = ", ".join(concerns)
             query = f"{skin_type} 피부에 {concerns_str} 고민이 있고 {texture} 제품을 원해요. 맞는 제품 추천해줘."
@@ -284,15 +327,14 @@ if recommend_btn:
             expanded_query = expand_query(query)
             docs = retriever.invoke(expanded_query)
             contexts = [doc.page_content for doc in docs]
+            # 추천 버튼은 히스토리 없이 호출
             answer = generate_answer(query, contexts)
 
         with st.container(border=True):
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                st.markdown("### 추천 결과")
-                st.write(answer)
-            with col2:
-                render_product_result(answer)
+            st.markdown("### 추천 결과")
+            st.write(answer)
+            st.divider()
+            render_product_results(answer)
 
 
 # ==========================================
@@ -312,7 +354,6 @@ if question:
     st.session_state.messages.append({"role": "user", "content": question})
     st.chat_message("user").write(question)
 
-    # 피부 정보 컨텍스트 구성
     if category == "기초제품":
         concerns_str = ", ".join(concerns) if concerns else "없음"
         full_question = f"[피부타입: {skin_type}, 고민: {concerns_str}, 제품종류: {texture}]\n{question}"
@@ -324,11 +365,13 @@ if question:
         expanded_question = expand_query(question)
         docs = retriever.invoke(expanded_question)
         contexts = [doc.page_content for doc in docs]
-        answer = generate_answer(full_question, contexts)
+
+        # [수정] 최근 3턴 히스토리 전달 (현재 질문 제외한 이전 메시지)
+        history = st.session_state.messages[:-1]  # 방금 append한 user 메시지 제외
+        answer = generate_answer(full_question, contexts, history=history)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
     st.chat_message("assistant").write(answer)
 
-    col1, col2 = st.columns([3, 1])
-    with col2:
-        render_product_result(answer)
+    # Top3 제품 렌더링
+    render_product_results(answer)
