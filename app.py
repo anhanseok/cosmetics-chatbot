@@ -366,24 +366,66 @@ if recommend_btn:
 
 
 # ==========================================
-# 질문 구체성 판단
+# 질문 분류: recommend / consult / vague
 # ==========================================
-def is_question_specific(question, history):
-    """질문이 충분히 구체적인지 판단. 후속 질문이면 무조건 specific으로 처리."""
+SPECIFIC_KEYWORDS = [
+    "선크림", "썬크림", "선케어", "립", "틴트", "립스틱", "파운데이션", "쿠션", "파데",
+    "세럼", "에센스", "앰플", "클렌징", "클렌저", "폼", "오일",
+    "토너", "로션", "크림", "미스트", "마스크", "팩",
+    "건성", "지성", "복합성", "민감성", "수부지",
+    "촉촉", "매트", "커버", "발색", "지속력",
+    "쿨톤", "웜톤", "뉴트럴", "밝은", "어두운",
+]
+
+CONSULT_KEYWORDS = [
+    "심해져", "심해졌어", "심해졌는데", "고민이야", "고민이에요", "어떡해", "어떻게 해",
+    "왜 이래", "트러블 났어", "뒤집어졌어", "예민해졌어", "자꾸 나", "계속 나",
+    "너무 건조해", "너무 번들", "너무 예민", "피부가 안 좋아", "피부 때문에",
+    "어떻게 관리", "관리법", "어떻게 하면", "도움말", "조언"
+]
+
+def classify_question(question, history):
+    """질문을 recommend / consult / vague 로 분류"""
+    # 후속 질문은 무조건 recommend
     if any(kw in question for kw in FOLLOWUP_KEYWORDS):
-        return True
+        return "recommend"
+    # 피부 고민 상담
+    if any(kw in question for kw in CONSULT_KEYWORDS):
+        return "consult"
+    # 추천 키워드 포함
+    if any(kw in question for kw in SPECIFIC_KEYWORDS):
+        return "recommend"
+    return "vague"
+
+
+def generate_consult(question, history):
+    """피부 고민 상담 전용 LLM 호출 (RAG 없음)"""
+    history_text = ""
+    if history:
+        recent = history[-6:]
+        turns = []
+        for msg in recent:
+            role = "사용자" if msg["role"] == "user" else "AI"
+            turns.append(f"{role}: {msg['content']}")
+        history_text = "\n".join(turns)
 
     response = LLM.invoke(f"""
-사용자가 화장품을 추천받으려 합니다.
-질문: "{question}"
+너는 피부 전문 상담사야.
+사용자의 피부 고민을 듣고 공감하면서 조언해줘.
 
-아래 기준으로 판단해:
-- 제품 종류(선크림/립/세럼/클렌징 등), 피부타입, 피부 고민, 피부톤 중 하나라도 언급되면 "specific"
-- 아무 정보도 없이 그냥 추천 요청만 하면 "vague"
+규칙:
+1. 제품 추천은 절대 하지 마.
+2. 고민의 원인 설명 + 생활습관/관리법 위주로 답변해.
+3. 공감하는 말로 시작해.
+4. 3~4문장으로 간결하게 답변해.
 
-"specific" 또는 "vague" 중 하나만 답해.
+[이전 대화]
+{history_text if history_text else "없음"}
+
+[Question]
+{question}
 """)
-    return "specific" in response.content.lower()
+    return response.content
 
 
 # ==========================================
@@ -410,16 +452,18 @@ if question:
         full_question = f"[카테고리: {texture}, 피부톤: {skin_tone}, 세부정보: {detail}]\n{question}"
 
     history = st.session_state.messages[:-1]
-    specific = is_question_specific(question, history)  # 한 번만 호출
+    q_type = classify_question(question, history)  # recommend / consult / vague
 
     with st.spinner("답변 생성 중..."):
-        if not specific:
+        if q_type == "vague":
             answer = (
                 "어떤 종류의 화장품을 찾으시나요? 😊\n\n"
                 "예) 선크림, 립틴트, 세럼, 클렌징오일 등\n"
                 "피부 타입(건성/지성/민감성)이나 피부 고민(건조함/모공/여드름 등)도 알려주시면 더 잘 추천해드릴 수 있어요!"
             )
-        else:
+        elif q_type == "consult":
+            answer = generate_consult(question, history)
+        else:  # recommend
             retriever = load_retriever()
             search_query = build_search_query(question, history)
             expanded_question = expand_query(search_query)
@@ -430,6 +474,6 @@ if question:
     st.session_state.messages.append({"role": "assistant", "content": answer})
     st.chat_message("assistant").write(answer)
 
-    # Top3 제품 렌더링 (구체적 답변일 때만)
-    if specific:
+    # Top3 제품 렌더링 (recommend일 때만)
+    if q_type == "recommend":
         render_product_results(answer)
