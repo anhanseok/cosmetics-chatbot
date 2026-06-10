@@ -273,13 +273,74 @@ def render_product_results(answer):
 # UI 설정
 # ==========================================
 st.set_page_config(
-    page_title="AI 화장품 추천 및 상담 챗봇",
+    page_title="CosMate",
     page_icon="💄",
     layout="wide"
 )
 
-st.title("💄 AI 화장품 추천 및 상담 챗봇")
-st.write("피부 타입과 고민을 입력하면 맞춤형 화장품을 추천하고, 궁금한 점을 상담해줍니다.")
+st.markdown("""
+<style>
+.stApp {
+    background: linear-gradient(180deg, #fff7fa 0%, #ffffff 100%);
+}
+.main-title {
+    font-size: 42px;
+    font-weight: 800;
+    color: #2b2b2b;
+    margin-bottom: 5px;
+}
+.sub-title {
+    font-size: 17px;
+    color: #666;
+    margin-bottom: 28px;
+}
+.product-card {
+    background: white;
+    padding: 22px;
+    border-radius: 18px;
+    border: 1px solid #ffe0ea;
+    box-shadow: 0 5px 14px rgba(0,0,0,0.05);
+    margin-bottom: 16px;
+}
+.badge {
+    display: inline-block;
+    background: #fff0f5;
+    color: #d6336c;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+.product-name {
+    font-size: 22px;
+    font-weight: 800;
+    color: #222;
+}
+.info-text {
+    color: #555;
+    line-height: 1.7;
+}
+.stButton > button {
+    background: linear-gradient(135deg, #ff7aa2, #ff4f87);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-weight: 800;
+    height: 48px;
+}
+.stButton > button:hover {
+    background: linear-gradient(135deg, #ff6694, #ff3f7b);
+    color: white;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="main-title">💄 CosMate ⋆ </div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="sub-title">실제 화장품 리뷰 데이터를 기반으로 개인 맞춤형 제품을 추천하는 AI 뷰티 어시스턴트</div>',
+    unsafe_allow_html=True
+)
 
 # ==========================================
 # 사이드바
@@ -309,7 +370,7 @@ with st.sidebar:
             ["여드름", "홍조", "건조함", "피지", "모공", "잡티", "각질", "탄력 저하"]
         )
 
-    else:  # 메이크업
+    else:
         texture = st.selectbox("제품 종류", ["립메이크업", "베이스메이크업"])
 
         if texture == "립메이크업":
@@ -338,7 +399,10 @@ with st.sidebar:
 # ==========================================
 # 추천 버튼
 # ==========================================
-st.subheader("✨ 맞춤 화장품 추천")
+st.subheader("✨ 맞춤 화장품 추천 ໒꒱ ‧₊˚")
+
+if not recommend_btn:
+    st.info("왼쪽 사이드바에서 피부 정보를 입력한 뒤 추천 버튼을 눌러주세요.")
 
 if recommend_btn:
     if category == "기초제품" and not concerns:
@@ -355,7 +419,6 @@ if recommend_btn:
             expanded_query = expand_query(query)
             docs = retriever.invoke(expanded_query)
             contexts = [doc.page_content for doc in docs]
-            # 추천 버튼은 히스토리 없이 호출
             answer = generate_answer(query, contexts)
 
         with st.container(border=True):
@@ -440,7 +503,7 @@ def generate_consult(question, history):
 # 챗봇
 # ==========================================
 st.divider()
-st.subheader("💬 피부 상담 챗봇")
+st.subheader("💬 피부 상담 챗봇 𖦹°‧")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
