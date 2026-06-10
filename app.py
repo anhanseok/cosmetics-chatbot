@@ -378,23 +378,43 @@ SPECIFIC_KEYWORDS = [
 ]
 
 CONSULT_KEYWORDS = [
-    "심해져", "심해졌어", "심해졌는데", "고민이야", "고민이에요", "어떡해", "어떻게 해",
-    "왜 이래", "트러블 났어", "뒤집어졌어", "예민해졌어", "자꾸 나", "계속 나",
-    "너무 건조해", "너무 번들", "너무 예민", "피부가 안 좋아", "피부 때문에",
-    "어떻게 관리", "관리법", "어떻게 하면", "도움말", "조언"
+    # 상태 악화
+    "심해져", "심해졌어", "심해졌는데", "더 심해", "점점 심해", "악화",
+    # 고민 표현
+    "고민이야", "고민이에요", "고민인데", "걱정이야", "걱정돼", "스트레스",
+    # 당황/하소연
+    "어떡해", "어떡하지", "어떻게 해", "어쩌지", "미치겠어", "힘들어",
+    # 원인 질문
+    "왜 나", "왜 생겨", "왜 이래", "왜 그래", "왜 이런", "원인이", "이유가", "때문인가",
+    # 증상 표현
+    "트러블 났어", "트러블이 생겨", "뒤집어졌어", "올라왔어", "뭐가 났어",
+    "예민해졌어", "예민해", "따가워", "가려워", "붉어져", "홍조가",
+    "자꾸 나", "계속 나", "반복돼", "안 없어져",
+    # 상태 묘사
+    "너무 건조해", "너무 번들", "너무 예민", "너무 칙칙", "너무 붉어",
+    "피부가 안 좋아", "피부 때문에", "피부가 이상해", "피부가 뒤집어",
+    # 관리 방법
+    "어떻게 관리", "관리법", "관리 방법", "어떻게 하면", "어떻게 해야",
+    "도움말", "조언", "도움이 될", "좋은 방법",
 ]
 
 def classify_question(question, history):
     """질문을 recommend / consult / vague 로 분류"""
-    # 후속 질문은 무조건 recommend
+    # 1. 추천 키워드 최우선 (consult 맥락이어도 선크림/세럼 등 나오면 recommend)
     if any(kw in question for kw in FOLLOWUP_KEYWORDS):
         return "recommend"
-    # 피부 고민 상담
-    if any(kw in question for kw in CONSULT_KEYWORDS):
-        return "consult"
-    # 추천 키워드 포함
     if any(kw in question for kw in SPECIFIC_KEYWORDS):
         return "recommend"
+    # 2. 명시적 고민 키워드
+    if any(kw in question for kw in CONSULT_KEYWORDS):
+        return "consult"
+    # 3. 위 둘 다 없을 때만 히스토리 맥락 참조
+    if history:
+        for msg in reversed(history):
+            if msg["role"] == "assistant":
+                if "추천 제품 1:" not in msg["content"]:
+                    return "consult"
+                break
     return "vague"
 
 
