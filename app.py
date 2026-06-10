@@ -211,6 +211,34 @@ def extract_product_names(answer):
 
 
 # ==========================================
+# [수정] 후속 질문 감지 → 검색 쿼리 보강
+# ==========================================
+FOLLOWUP_KEYWORDS = ["2번", "3번", "1번", "그거", "그 제품", "왜 좋아", "왜좋아", "성분", "어때", "차이", "더 알려", "자세히", "비교"]
+
+def build_search_query(question, history):
+    """후속 질문이면 히스토리 직전 assistant 답변에서 제품명 추출해 쿼리 보강"""
+    is_followup = any(kw in question for kw in FOLLOWUP_KEYWORDS)
+    if not is_followup or not history:
+        return question
+
+    for msg in reversed(history):
+        if msg["role"] == "assistant":
+            names = extract_product_names(msg["content"])
+            if names:
+                # "2번이 왜 좋아?" → 2번 인덱스 제품 우선, 나머지도 포함
+                if "2번" in question and len(names) >= 2:
+                    primary = names[1]
+                elif "3번" in question and len(names) >= 3:
+                    primary = names[2]
+                elif "1번" in question:
+                    primary = names[0]
+                else:
+                    primary = names[0]
+                return f"{primary} {question}"
+    return question
+
+
+# ==========================================
 # [수정] Top3 이미지+가격 렌더링
 # ==========================================
 def render_product_results(answer):
@@ -362,12 +390,12 @@ if question:
 
     with st.spinner("답변 생성 중..."):
         retriever = load_retriever()
-        expanded_question = expand_query(question)
+        # [수정] 후속 질문이면 이전 추천 제품명을 검색 쿼리에 보강
+        history = st.session_state.messages[:-1]
+        search_query = build_search_query(question, history)
+        expanded_question = expand_query(search_query)
         docs = retriever.invoke(expanded_question)
         contexts = [doc.page_content for doc in docs]
-
-        # [수정] 최근 3턴 히스토리 전달 (현재 질문 제외한 이전 메시지)
-        history = st.session_state.messages[:-1]  # 방금 append한 user 메시지 제외
         answer = generate_answer(full_question, contexts, history=history)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
