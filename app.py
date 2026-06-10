@@ -598,14 +598,22 @@ if question:
         col_rag, col_llm = st.columns(2)
 
         with col_rag:
-            st.markdown("#### 📚 RAG 기반 추천")
-            st.caption("실제 리뷰 데이터 기반")
+            st.markdown(
+                '<div style="background:#3d5a99;color:white;padding:10px 16px;border-radius:8px;font-weight:700;font-size:15px;margin-bottom:10px;">'
+                '📚 RAG 답변 | 리뷰 데이터 기반 검색·생성'
+                '</div>',
+                unsafe_allow_html=True
+            )
             st.chat_message("assistant").write(rag_answer)
             render_product_results(rag_answer)
 
         with col_llm:
-            st.markdown("#### 🤖 LLM 기반 추천")
-            st.caption("AI 자체 지식 기반")
+            st.markdown(
+                '<div style="background:#b5451b;color:white;padding:10px 16px;border-radius:8px;font-weight:700;font-size:15px;margin-bottom:10px;">'
+                '🤖 순수 LLM 답변 | 학습 지식만 사용 (문서 검색 없음)'
+                '</div>',
+                unsafe_allow_html=True
+            )
             st.chat_message("assistant").write(llm_answer)
     else:
         st.chat_message("assistant").write(rag_answer)
