@@ -522,7 +522,9 @@ def generate_llm_only(question, q_type, history=None):
         prompt = f"""{question}"""
 
     else:  # consult
-        prompt = f"""{question}"""
+        prompt = f"""아래 피부 고민에 1~2문장으로만 짧게 답변해. 제품 추천은 하지 마.
+
+{question}"""
 
     response = LLM_MINI.invoke(prompt)
     return response.content
