@@ -196,7 +196,15 @@ def generate_answer(question, contexts, history=None):
 [Answer]
 """
     response = LLM.invoke(prompt)
-    return response.content
+    result = response.content
+
+    # 추천 제품/이유 줄바꿈 강제 처리
+    import re
+    result = re.sub(r'(추천 제품 \d+:)', r'\n\n\1', result)
+    result = re.sub(r'(추천 이유 \d+:)', r'\n\1', result)
+    result = result.strip()
+
+    return result
 
 
 # ==========================================
