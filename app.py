@@ -171,18 +171,18 @@ def generate_answer(question, contexts, history=None):
 6. 이전 대화가 있으면 맥락을 반영해서 답변해.
 
 [중요] 반드시 아래 형식만 사용해. 다른 형식은 절대 사용하지 마.
-"추천 제품 N:" 으로 시작하는 줄과 한칸 띄우고 "추천 이유 N:" 으로 시작하는 줄만 출력해.
+"추천 제품 N:" 으로 시작하는 줄과 "추천 이유 N:" 으로 시작하는 줄만 출력해.
 앞에 숫자나 bullet을 붙이지 마. 형식 외의 텍스트를 추가하지 마.
 
 출력 형식 (이 형식 그대로):
 추천 제품 1: 상품명
-추천 이유 1: 리뷰에서 확인된 근거
+추천 이유 1: 리뷰에서 확인된 근거 (1~2문장)
 
 추천 제품 2: 상품명
-추천 이유 2: 리뷰에서 확인된 근거
+추천 이유 2: 리뷰에서 확인된 근거 (1~2문장)
 
 추천 제품 3: 상품명
-추천 이유 3: 리뷰에서 확인된 근거
+추천 이유 3: 리뷰에서 확인된 근거 (1~2문장)
 
 [이전 대화]
 {history_text if history_text else "없음"}
@@ -573,6 +573,14 @@ if question:
             expanded_question = expand_query(search_query)
             docs = retriever.invoke(expanded_question)
             contexts = [doc.page_content for doc in docs]
+
+            # 디버깅용 - 확인 후 제거
+            with st.expander("🔍 검색된 Context 확인"):
+                for i, c in enumerate(contexts):
+                    st.write(f"**문서 {i+1}**")
+                    st.write(c)
+                    st.divider()
+
             rag_answer = generate_answer(full_question, contexts, history=history)
             llm_answer = generate_llm_only(full_question, q_type="recommend", history=history)
 
@@ -592,7 +600,7 @@ if question:
                 '</div>',
                 unsafe_allow_html=True
             )
-            st.chat_message("assistant").write(rag_answer)
+            st.chat_message("assistant").markdown(rag_answer)
             if q_type == "recommend":
                 render_product_results(rag_answer)
 
@@ -603,6 +611,6 @@ if question:
                 '</div>',
                 unsafe_allow_html=True
             )
-            st.chat_message("assistant").write(llm_answer)
+            st.chat_message("assistant").markdown(llm_answer)
     else:
-        st.chat_message("assistant").write(rag_answer)
+        st.chat_message("assistant").markdown(rag_answer)
