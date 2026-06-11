@@ -519,44 +519,10 @@ def generate_llm_only(question, q_type, history=None):
         history_text = "\n".join(turns)
 
     if q_type == "recommend":
-        prompt = f"""너는 화장품 전문가야. 아래 질문에 대해 네 지식만으로 답변해줘.
-외부 리뷰 데이터 없이 일반적인 화장품 지식을 바탕으로 답변해.
-
-규칙:
-1. 제품 3개를 순위별로 추천해.
-2. 각 추천 이유는 일반적인 성분/특성 지식 기반으로 설명해.
-3. 답변 형식은 아래를 따라줘.
-
-답변 형식:
-추천 제품 1: 상품명
-추천 이유 1: 설명 (1~2문장)
-
-추천 제품 2: 상품명
-추천 이유 2: 설명 (1~2문장)
-
-추천 제품 3: 상품명
-추천 이유 3: 설명 (1~2문장)
-
-[이전 대화]
-{history_text if history_text else "없음"}
-
-[Question]
-{question}"""
+        prompt = f"""{question}"""
 
     else:  # consult
-        prompt = f"""너는 피부 전문가야. 아래 질문에 대해 네 지식만으로 답변해줘.
-외부 리뷰 데이터 없이 일반적인 피부 지식을 바탕으로 답변해.
-
-규칙:
-1. 제품 추천은 절대 하지 마.
-2. 고민의 원인 설명 + 생활습관/관리법 위주로 답변해.
-3. 3~4문장으로 간결하게 답변해.
-
-[이전 대화]
-{history_text if history_text else "없음"}
-
-[Question]
-{question}"""
+        prompt = f"""{question}"""
 
     response = LLM_MINI.invoke(prompt)
     return response.content
